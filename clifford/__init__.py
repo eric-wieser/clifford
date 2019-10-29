@@ -45,7 +45,7 @@ from typing import List, Tuple, Set, Container, Dict, Optional
 # Major library imports.
 import numpy as np
 from numpy import linalg, zeros
-import numba
+import numba as _numba  # to avoid clashing with clifford.numba
 import sparse
 
 
@@ -85,13 +85,13 @@ def get_adjoint_function(gradeList):
     '''
     grades = np.array(gradeList)
     signs = np.power(-1, grades*(grades-1)//2)
-    @numba.njit
+    @_numba.njit
     def adjoint_func(value):
         return signs * value  # elementwise multiplication
     return adjoint_func
 
 
-@numba.njit(parallel=NUMBA_PARALLEL, nogil=True)
+@_numba.njit(parallel=NUMBA_PARALLEL, nogil=True)
 def _numba_construct_tables(
     gradeList, linear_map_to_bitmap, bitmap_to_linear_map, signature
 ):
@@ -180,9 +180,9 @@ def get_mult_function(mt: sparse.COO, gradeList,
         return _get_mult_function_runtime_sparse(mt)
 
 
-def _get_mult_function_result_type(a: numba.types.Type, b: numba.types.Type, mt: np.dtype):
-    a_dt = numba.numpy_support.as_dtype(getattr(a, 'dtype', a))
-    b_dt = numba.numpy_support.as_dtype(getattr(b, 'dtype', b))
+def _get_mult_function_result_type(a: _numba.types.Type, b: _numba.types.Type, mt: np.dtype):
+    a_dt = _numba.numpy_support.as_dtype(getattr(a, 'dtype', a))
+    b_dt = _numba.numpy_support.as_dtype(getattr(b, 'dtype', b))
     return np.result_type(a_dt, mt, b_dt)
 
 
@@ -200,7 +200,7 @@ def _get_mult_function(mt: sparse.COO):
     k_list, l_list, m_list = mt.coords
     mult_table_vals = mt.data
 
-    @numba.generated_jit(nopython=True)
+    @_numba.generated_jit(nopython=True)
     def mv_mult(value, other_value):
         # this casting will be done at jit-time
         ret_dtype = _get_mult_function_result_type(value, other_value, mult_table_vals.dtype)
@@ -231,7 +231,7 @@ def _get_mult_function_runtime_sparse(mt: sparse.COO):
     k_list, l_list, m_list = mt.coords
     mult_table_vals = mt.data
 
-    @numba.generated_jit(nopython=True)
+    @_numba.generated_jit(nopython=True)
     def mv_mult(value, other_value):
         # this casting will be done at jit-time
         ret_dtype = _get_mult_function_result_type(value, other_value, mult_table_vals.dtype)
@@ -253,7 +253,7 @@ def _get_mult_function_runtime_sparse(mt: sparse.COO):
     return mv_mult
 
 
-@numba.njit
+@_numba.njit
 def gmt_element(bitmap_a, bitmap_b, sig_array, bitmap_to_linear_mapping):
     """
     Element of the geometric multiplication table given blades a, b.
@@ -266,7 +266,7 @@ def gmt_element(bitmap_a, bitmap_b, sig_array, bitmap_to_linear_mapping):
     return idx, output_sign
 
 
-@numba.njit
+@_numba.njit
 def imt_check(grade_list_idx, grade_list_i, grade_list_j):
     """
     A check used in imt table generation
@@ -274,7 +274,7 @@ def imt_check(grade_list_idx, grade_list_i, grade_list_j):
     return ((grade_list_idx == abs(grade_list_i - grade_list_j)) and (grade_list_i != 0) and (grade_list_j != 0))
 
 
-@numba.njit
+@_numba.njit
 def omt_check(grade_list_idx, grade_list_i, grade_list_j):
     """
     A check used in omt table generation
@@ -282,7 +282,7 @@ def omt_check(grade_list_idx, grade_list_i, grade_list_j):
     return grade_list_idx == (grade_list_i + grade_list_j)
 
 
-@numba.njit
+@_numba.njit
 def lcmt_check(grade_list_idx, grade_list_i, grade_list_j):
     """
     A check used in lcmt table generation
@@ -290,7 +290,7 @@ def lcmt_check(grade_list_idx, grade_list_i, grade_list_j):
     return grade_list_idx == (grade_list_j - grade_list_i)
 
 
-@numba.njit
+@_numba.njit
 def grade_obj_func(objin_val, gradeList, threshold):
     """ returns the modal grade of a multivector """
     modal_value_count = np.zeros(objin_val.shape)
@@ -317,7 +317,7 @@ def get_leftLaInv(mult_table, gradeList):
     identity = np.zeros((n_dims,))
     identity[gradeList.index(0)] = 1
 
-    @numba.njit
+    @_numba.njit
     def leftLaInvJIT(value):
         intermed = _numba_val_get_left_gmt_matrix(value, k_list, l_list, m_list, mult_table_vals, n_dims)
         if abs(linalg.det(intermed)) < _eps:
@@ -406,7 +406,7 @@ def generate_bitmap_to_linear_index_map(bladeTupList, firstIdx):
     return bitmap_map
 
 
-@numba.njit
+@_numba.njit
 def count_set_bits(bitmap):
     """
     Counts the number of bits set to 1 in bitmap
@@ -422,7 +422,7 @@ def count_set_bits(bitmap):
     return count
 
 
-@numba.njit
+@_numba.njit
 def canonical_reordering_sign_euclidean(bitmap_a, bitmap_b):
     """
     Computes the sign for the product of bitmap_a and bitmap_b
@@ -439,7 +439,7 @@ def canonical_reordering_sign_euclidean(bitmap_a, bitmap_b):
         return -1
 
 
-@numba.njit
+@_numba.njit
 def canonical_reordering_sign(bitmap_a, bitmap_b, metric):
     """
     Computes the sign for the product of bitmap_a and bitmap_b
@@ -499,7 +499,7 @@ def compute_blade_representation(bitmap: int, firstIdx: int) -> Tuple[int, ...]:
 
 
 # todo: work out how to let numba use the COO objects directly
-@numba.njit
+@_numba.njit
 def _numba_val_get_left_gmt_matrix(x, k_list, l_list, m_list, mult_table_vals, ndims):
     intermed = np.zeros((ndims, ndims))
     test_ind = 0
@@ -535,6 +535,9 @@ def val_get_right_gmt_matrix(mt: sparse.COO, x):
 from ._layout import Layout  # noqa: E402
 from ._multivector import MultiVector  # noqa: E402
 from ._mvarray import MVArray  # noqa: E402
+
+# this registers the extension type
+from . import numba  # noqa: F401
 
 
 def array(obj):
